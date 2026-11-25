@@ -69,9 +69,42 @@ export struct MobileRemoteView {
   private wheelLast: number = 0;
   private keyboardOriginX: number = 0;
   private keyboardOriginY: number = 0;
+  private lastModal: string = '';
+  private physicalButtons: number = 0;
+  private lastKeyStamp: number = -1;
+  private lastKeyCode: number = -1;
+  private lastKeyType: number = -1;
   aboutToAppear(): void {
+    this.lastModal = this.state.modal;
     if (this.controller) { this.controller.releaseInput = () => this.release(); this.shortcutStore = new RemoteShortcuts(this.controller.store); }
     this.refreshShortcuts(); this.stateChanged();
+    setTimeout(() => this.focusInput(), 0);
+  }
+  private focusInput(): void {
+    if (this.shortcutManager || this.state.modal || !this.state.ready) return;
+    try { this.getUIContext().getFocusController().requestFocus('mobileInput'); } catch {}
+  }
+  private releasePhysicalMouse(): void {
+    const held = this.physicalButtons;
+    if (!held) return;
+    this.physicalButtons = 0;
+    for (let i = 0; i < 3; i++) {
+      if ((held & (1 << i)) !== 0) this.controller?.pointer(this.mouse.x, this.mouse.y, 2 + i * 2, 0);
+    }
+  }
+  private physicalKey(event: KeyEvent): boolean {
+    if (this.shortcutManager || this.state.modal) return false;
+    if (event.type !== KeyType.Down && event.type !== KeyType.Up) return false;
+    if (this.lastKeyStamp === event.timestamp && this.lastKeyCode === event.keyCode && this.lastKeyType === event.type) {
+      event.stopPropagation();
+      return true;
+    }
+    this.lastKeyStamp = event.timestamp;
+    this.lastKeyCode = event.keyCode;
+    this.lastKeyType = event.type;
+    this.controller?.physicalKey(event.keyCode, event.type === KeyType.Down);
+    event.stopPropagation();
+    return true;
   }
   private refreshShortcuts(): void { this.pinnedShortcuts = this.shortcutStore?.pinned(this.state.platform) ?? []; this.shortcutRevision++; }
   private sendShortcut(item: RemoteShortcut): void {
@@ -82,7 +115,10 @@ export struct MobileRemoteView {
   private manageShortcuts(): void { this.controller?.release(); this.menu = ''; this.shortcutManager = true; }
   aboutToDisappear(): void { this.release(); if (this.controller) this.controller.releaseInput = () => {}; this.controller?.surface('0'); }
   private stateChanged(): void {
+    const previousModal = this.lastModal;
+    this.lastModal = this.state.modal;
     if (!this.state.ready || this.state.modal === 'privacyUnlock') this.shortcutManager = false;
+    if (previousModal && !this.state.modal && this.state.ready) setTimeout(() => this.focusInput(), 0);
     if (this.shortcutPlatform !== this.state.platform) {
       this.shortcutPlatform = this.state.platform; this.shortcutManager = false; this.refreshShortcuts();
     }
@@ -97,6 +133,7 @@ export struct MobileRemoteView {
     }
   }
   private release(): void {
+    this.releasePhysicalMouse();
     this.touches.cancel(); this.leftHeld = this.rightHeld = false; this.modifiers = []; this.wheelOffset = 0;
     if (this.longTimer >= 0) clearTimeout(this.longTimer); this.longTimer = -1;
   }
@@ -109,8 +146,9 @@ export struct MobileRemoteView {
     this.cursorX = this.viewport.left() + this.mouse.x * this.viewport.width(); this.cursorY = this.viewport.top() + this.mouse.y * this.viewport.height();
   }
   private touch(event: TouchEvent): void {
-    if (event.source === SourceType.Mouse) return;
     const kind = event.type === TouchType.Down ? 'down' : event.type === TouchType.Move ? 'move' : event.type === TouchType.Up ? 'up' : 'cancel';
+    if (kind === 'down') this.focusInput();
+    if (event.source === SourceType.Mouse) return;
     if (kind === 'down') {
       this.touches.begin(); if (this.longTimer >= 0) clearTimeout(this.longTimer);
       if (event.touches.length === 1) this.longTimer = setTimeout(() => this.touches.hold(), 500);
@@ -119,15 +157,21 @@ export struct MobileRemoteView {
     this.touches.touch(event.touches.map((t: TouchObject): TouchPoint => ({ x: t.x, y: t.y })), kind); this.applyViewport();
   }
   private physicalMouse(event: MouseEvent): void {
-    if (!this.viewport.contains(event.x, event.y) && event.action !== MouseAction.Release) return;
+    if (event.action === MouseAction.CANCEL) { this.releasePhysicalMouse(); event.stopPropagation(); return; }
+    if (event.action === MouseAction.Press) this.focusInput();
+    if (this.physicalButtons === 0 && event.action !== MouseAction.Release && !this.viewport.contains(event.x, event.y)) return;
     if (event.action === MouseAction.Move && this.keyboard) {
       this.viewport.panForAbsolutePointer(event.x, event.y);
       this.applyViewport();
     }
     this.mouse.move(this.viewport.x(event.x), this.viewport.y(event.y));
     const button = event.button === MouseButton.Left ? 0 : event.button === MouseButton.Right ? 1 : event.button === MouseButton.Middle ? 2 : -1;
-    if (button >= 0 && (event.action === MouseAction.Press || event.action === MouseAction.Release))
+    if (button >= 0 && (event.action === MouseAction.Press || event.action === MouseAction.Release)) {
+      if (event.action === MouseAction.Press) this.physicalButtons |= 1 << button;
+      else this.physicalButtons &= ~(1 << button);
       this.controller?.pointer(this.mouse.x, this.mouse.y, (event.action === MouseAction.Press ? 1 : 2) + button * 2, 0);
+    }
+    event.stopPropagation();
   }
   private orbTouch(event: TouchEvent): void {
     const p = event.changedTouches[0]; if (!p) return;
@@ -296,7 +340,7 @@ export struct MobileRemoteView {
           if (this.menu === 'controls') { Row() {}.width(6).height(6).borderRadius(3).backgroundColor(MobileTheme.green) }
           Text(this.menu === 'controls' ? tr("已连接") : this.menu === 'video' ? tr("画面设置") : tr("网络状态")).fontSize(14).fontWeight(600).fontColor(MobileTheme.ink)
         }.layoutWeight(1)
-        MobileIconButton({ icon: 'close', label: tr("关闭控制栏"), iconExtent: 30, iconSize: 20, action: () => this.menu = '' })
+        MobileIconButton({ icon: 'close', label: tr("关闭控制栏"), iconExtent: 30, iconSize: 20, action: () => { this.menu = ''; this.focusInput(); } })
       }.width('100%')
       Scroll() {
         Column({ space: 8 }) {
@@ -486,15 +530,24 @@ export struct MobileRemoteView {
         }.padding(20).constraintSize({ minWidth: 200 }).backgroundColor('#B0202024').borderRadius(14)
           .position({ x: (this.viewWidth - 200) / 2, y: (this.viewHeight - 104) / 2 }).hitTestBehavior(HitTestMode.None)
       }
-      Column() {}.width('100%').height('100%').focusable(!this.shortcutManager).enabled(!this.shortcutManager).defaultFocus(true)
-        .onTouch((e: TouchEvent) => this.touch(e)).onMouse((e: MouseEvent) => this.physicalMouse(e))
+      // A focusable leaf is required: an empty Column is a focus scope and
+      // receives touch events but cannot retain hardware keyboard focus.
+      Text('').id('mobileInput').width('100%').height('100%')
+        .focusable(!this.shortcutManager && !this.state.modal)
+        .enabled(!this.shortcutManager)
+        .defaultFocus(true)
+        .focusOnTouch(true)
+        .onTouch((e: TouchEvent) => this.touch(e))
+        .onMouse((e: MouseEvent) => this.physicalMouse(e))
+        .onHover((hovered: boolean) => { if (!hovered) this.releasePhysicalMouse(); })
         .onAxisEvent((event: AxisEvent) => { const delta = event.getVerticalAxisValue(); if (delta) this.mouse.scroll(-delta); })
-        .onKeyEvent((e: KeyEvent) => { if (this.shortcutManager) return false; if (e.type === KeyType.Down || e.type === KeyType.Up) { this.controller?.physicalKey(e.keyCode, e.type === KeyType.Down); return true; } return false; })
-        .onBlur(() => this.controller?.release())
+        .onKeyPreIme((e: KeyEvent) => this.physicalKey(e))
+        .onKeyEvent((e: KeyEvent) => { this.physicalKey(e); })
+        .onBlur(() => { this.releasePhysicalMouse(); this.controller?.release(); })
         .accessibilityText(tr("远程桌面：轻触点击、长按右键、双指捏合缩放、放大后双指拖动画面，原始比例下双指滚动"))
       MobileIcon({ name: 'cursor', iconExtent: 24, color: '#000000' })
         .position({ x: this.cursorX - 1, y: this.cursorY - 1 }).hitTestBehavior(HitTestMode.None)
-      if (this.menu) { Column() {}.width('100%').height('100%').onClick(() => this.menu = '') }
+      if (this.menu) { Column() {}.width('100%').height('100%').onClick(() => { this.menu = ''; this.focusInput(); }) }
       if (this.keyboard) { this.Keyboard() }
       if (this.mouseVisible && this.state.hasFrame) { this.MouseBar() }
       if (this.menu) { this.Menu() }
@@ -505,7 +558,7 @@ export struct MobileRemoteView {
         .onTouch((e: TouchEvent) => this.orbTouch(e))
       if (this.shortcutManager) {
         RemoteShortcutManager({ store: this.shortcutStore, platform: RemoteShortcuts.platform(this.state.platform),
-          changed: () => this.refreshShortcuts(), close: () => { this.shortcutManager = false; this.refreshShortcuts(); } })
+          changed: () => this.refreshShortcuts(), close: () => { this.shortcutManager = false; this.refreshShortcuts(); setTimeout(() => this.focusInput(), 0); } })
       }
     }.width('100%').height('100%').backgroundColor(Color.Black).clip(true)
       .onAreaChange((_old: Area, next: Area) => {

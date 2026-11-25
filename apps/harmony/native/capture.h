@@ -19,22 +19,29 @@
 #include "capture_surface.h"
 
 namespace crossdesk::harmony {
+// OH_AVScreenCaptureStateCode gained PAUSED_BY_USER/RESUMED_BY_USER/PAUSED_BY_APP/
+// RESUMED_BY_APP (11..14) in API 26. Older SDK headers do not declare them, so the
+// ABI-frozen numeric values are compared here instead of the enum constants.
+constexpr int kStatePausedByUser = 11;
+constexpr int kStateResumedByUser = 12;
+constexpr int kStatePausedByApp = 13;
+constexpr int kStateResumedByApp = 14;
 // Microphone notifications do not change video/input availability.
 inline bool CaptureActiveForState(int state, bool current) {
   if (state < 0) return false;
   switch (state) {
     case OH_SCREEN_CAPTURE_STATE_STARTED:
     case OH_SCREEN_CAPTURE_STATE_EXIT_PRIVATE_SCENE:
-    case OH_SCREEN_CAPTURE_STATE_RESUMED_BY_USER:
-    case OH_SCREEN_CAPTURE_STATE_RESUMED_BY_APP: return true;
+    case kStateResumedByUser:
+    case kStateResumedByApp: return true;
     case OH_SCREEN_CAPTURE_STATE_CANCELED:
     case OH_SCREEN_CAPTURE_STATE_STOPPED_BY_USER:
     case OH_SCREEN_CAPTURE_STATE_INTERRUPTED_BY_OTHER:
     case OH_SCREEN_CAPTURE_STATE_STOPPED_BY_CALL:
     case OH_SCREEN_CAPTURE_STATE_ENTER_PRIVATE_SCENE:
     case OH_SCREEN_CAPTURE_STATE_STOPPED_BY_USER_SWITCHES:
-    case OH_SCREEN_CAPTURE_STATE_PAUSED_BY_USER:
-    case OH_SCREEN_CAPTURE_STATE_PAUSED_BY_APP: return false;
+    case kStatePausedByUser:
+    case kStatePausedByApp: return false;
     default: return current;
   }
 }

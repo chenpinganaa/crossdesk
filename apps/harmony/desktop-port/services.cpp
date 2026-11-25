@@ -115,6 +115,12 @@ uint32_t SDL_GetGlobalMouseState(float* x, float* y) {
   return env.value("buttons", 0u);
 }
 bool SDL_OpenURL(const char* url) { return Request({{"op", "openUrl"}, {"url", url}}).value("ok", false); }
+
+bool SDL_DisableScreenSaver() { return true; }
+void SDL_EnableScreenSaver() {}
+bool SDL_SetHint(const char*, const char*) { return true; }
+// ArkUI applies the system density itself; Slint must not scale a second time.
+float SDL_GetDisplayContentScale(SDL_DisplayID) { return 1.0f; }
 struct SDL_AudioStream { crossdesk::harmony::AudioPlayer player; };
 uint32_t SDL_OpenAudioDevice(uint32_t, const SDL_AudioSpec* spec) {
   if (AudioFormat(spec)) return 1;

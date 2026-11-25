@@ -75,6 +75,25 @@ function feed(c,event){events.push({session:c.session,...event});c.poll();}
   const second=commands.filter(c=>c.op==='connect').at(-1);
   feed(c,{type:'connection',connection:connect.connection,status:1});assert(!c.state.ready); // Superseded session.
   feed(c,{type:'connection',connection:second.connection,status:6});assert.equal(c.state.modal,'password');assert.match(c.state.notice,/密码错误/);
+  await c.requestConnection('987654321');assert.equal(c.state.modal,'password');c.begin('correct');
+  const trustRejectedConn=commands.filter(c=>c.op==='connect').at(-1);
+  feed(c,{type:'connection',connection:trustRejectedConn.connection,status:1});await flush();assert(c.state.ready);
+  feed(c,{type:'connection',connection:trustRejectedConn.connection,status:5,trustSuspected:true});
+  assert.equal(c.state.modal,'notice');assert.match(c.state.notice,/可信设备/);
+  await c.requestConnection('987654321');const normalCloseConn=commands.filter(c=>c.op==='connect').at(-1);
+  feed(c,{type:'data',connection:normalCloseConn.connection,message:{type:3,host_info:{host_name:'Desktop',platform:'windows',app_version:'1.7.7',supports_video_settings:true,displays:[{name:'Display1'}]}}});
+  feed(c,{type:'connection',connection:normalCloseConn.connection,status:1});await flush();
+  feed(c,{type:'connection',connection:normalCloseConn.connection,status:5,trustSuspected:false});
+  assert.equal(c.state.modal,'notice');assert.equal(c.state.notice,'远端已关闭连接');
+  await c.requestConnection('987654321');const vPrefixConn=commands.filter(c=>c.op==='connect').at(-1);
+  const vCallsBefore=platforms[0].versionCalls??0;
+  feed(c,{type:'data',connection:vPrefixConn.connection,message:{type:3,host_info:{host_name:'WinHost',platform:'windows',app_version:'v1.7.7-20261124',supports_video_settings:true,displays:[{name:'Display1'}]}}});
+  feed(c,{type:'connection',connection:vPrefixConn.connection,status:1});await flush();
+  assert.notEqual(c.state.modal,'upgrade');assert.equal(platforms[0].versionCalls,vCallsBefore+1);
+  c.end('');await c.requestConnection('987654321');const invalidVerConn=commands.filter(c=>c.op==='connect').at(-1);
+  feed(c,{type:'data',connection:invalidVerConn.connection,message:{type:3,host_info:{host_name:'LegacyHost',platform:'windows',app_version:'',supports_video_settings:false,displays:[{name:'Display1'}]}}});
+  feed(c,{type:'connection',connection:invalidVerConn.connection,status:1});await flush();
+  assert.equal(c.state.modal,'upgrade');c.end('');
   const previousSession=c.session;c.saveSettings('private.example','9443');await flush();
   assert.equal(c.scope(),'private.example:9443');assert.equal(c.state.recent.length,0);
   feed(c,{session:previousSession,type:'identity',identity:'000000000@stale'});assert.notEqual(c.state.identity,'000000000');

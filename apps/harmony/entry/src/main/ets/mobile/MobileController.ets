@@ -24,6 +24,7 @@ interface Command {
 }
 interface NativeEvent {
   type: string; session: number; connection?: number; status?: number; controller?: boolean; generation?: number;
+  trustRejected?: boolean; trustSuspected?: boolean;
   id?: string; identity?: string; message?: Object; report?: NetworkReport; width?: number; height?: number;
   frame?: number; latency?: number; latencyCount?: number; text?: string; reason?: string; name?: string; progress?: number;
   sending?: boolean; path?: string; ok?: boolean; request?: number | string; latest?: string;
@@ -457,11 +458,16 @@ export class MobileController {
   private async checkRemote(version: string): Promise<void> {
     if (this.checkedRemote || !this.foreground || !this.state.consent || !this.state.ready) return;
     this.checkedRemote = true;
-    if (!version || !/^\d+\.\d+\.\d+/.test(version)) { this.state.notice = tr("被控端版本过低，请升级到最新版本。"); this.state.modal = 'upgrade'; return; }
+    const normalized = version.trim();
+    if (!normalized || !/^[vV]?\d+\.\d+\.\d+(?:[-+].+)?$/.test(normalized)) {
+      this.state.notice = tr("被控端版本过低，请升级到最新版本。");
+      this.state.modal = 'upgrade';
+      return;
+    }
     const request = ++this.versionRequest, connection = this.connection; this.remoteVersionRequest = request;
     const body = await this.platform.version();
     if (body && request === this.remoteVersionRequest && connection === this.connection && this.foreground && this.state.consent)
-      this.send({ op: 'version', body: body, version: version, request: request });
+      this.send({ op: 'version', body: body, version: normalized, request: request });
   }
   document(name: string, title: string, back: string = 'about'): void {
     try {
@@ -536,7 +542,9 @@ export class MobileController {
         this.end(''); this.state.remote = this.connectingId; this.state.notice = tr("访问密码错误，请重新输入"); this.state.modal = 'password';
       } else if ((e.status ?? 0) >= 3) {
         const reasons = ['', '', '', tr("连接已断开"), tr("连接失败"), tr("远端已关闭连接"), tr("访问密码错误"), tr("找不到该设备 ID"), tr("远端当前不可用")];
-        if (e.status === 4 && this.connectingId.includes(':')) this.end(tr("IP 直连失败，请检查电脑的直连地址和网络。"));
+        if (e.trustRejected === true || (e.status === 5 && e.trustSuspected === true && !this.receivedHostInfo && !this.state.hasFrame)) {
+          this.end(tr("远端拒绝连接：请将“设置 → 本机配对信息”添加到电脑端可信设备列表"));
+        } else if (e.status === 4 && this.connectingId.includes(':')) this.end(tr("IP 直连失败，请检查电脑的直连地址和网络。"));
         else this.end(reasons[e.status ?? 0] ?? tr("连接已结束"));
       }
     } else if (e.type === 'ended') this.end(e.reason ?? '');

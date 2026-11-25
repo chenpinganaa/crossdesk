@@ -10,6 +10,7 @@
 #include <mobile_video_timing.h>
 #include <display_stream_id.h>
 #include <display_resolution_preferences.h>
+#include <hilog/log.h>
 #include <libyuv.h>
 #include <algorithm>
 #include <cmath>
@@ -110,12 +111,21 @@ class MobileSession {
         if (s->signal_status_ != status) {
           ++s->signal_generation_;
           if (s->signal_status_ == MiniRtcSignalConnected) s->signal_started_ = Clock::now();
+          OH_LOG_Print(LOG_APP, status >= MiniRtcSignalFailed && status != MiniRtcSignalReconnecting ? LOG_WARN : LOG_INFO,
+                       0, "CrossDeskConn",
+                       "Signal status: controller=%{public}d status=%{public}d gen=%{public}llu",
+                       0, int(status), static_cast<unsigned long long>(s->signal_generation_));
         }
         s->signal_status_ = status;
         if (s->online_) {
           constexpr char info[] = R"({"type":"client_info","version":"harmony-mobile","platform":"harmonyos"})";
           MiniRtcSendSignalMessage(s->identity_, info, sizeof(info)-1);
         }
+      } else {
+        OH_LOG_Print(LOG_APP, status >= MiniRtcSignalFailed && status != MiniRtcSignalReconnecting ? LOG_WARN : LOG_INFO,
+                     0, "CrossDeskConn",
+                     "Signal status: controller=%{public}d status=%{public}d gen=%{public}llu",
+                     1, int(status), static_cast<unsigned long long>(s->signal_generation_));
       }
       s->Event({{"type", "signal"}, {"controller", controller}, {"status", status},
                 {"generation", s->signal_generation_}, {"id", s->login_.substr(0, s->login_.find('@'))}});
@@ -142,11 +152,23 @@ class MobileSession {
     Dispatch(user, [status, remote](MobileSession* s, bool controller) {
       if (!controller) {
         // Defense in depth if a server tries to attach a guest to our identity.
-        if (status == MiniRtcConnectionConnected && s->identity_)
+        if (status == MiniRtcConnectionConnected && s->identity_) {
+          OH_LOG_Print(LOG_APP, LOG_WARN, 0, "CrossDeskConn",
+                       "Inbound peer rejected on controller-only mobile session");
           MiniRtcDisconnectPeerConnection(s->identity_, s->login_.substr(0,s->login_.find('@')).c_str(), remote.c_str());
+        }
         return;
       }
-      s->Event({{"type", "connection"}, {"status", status}}, true);
+      const bool trust_rejected = s->trust_rejected_.load();
+      const bool trust_suspected = status == MiniRtcConnectionClosed &&
+          s->trust_challenged_.load() && !s->host_admitted_.load();
+      OH_LOG_Print(LOG_APP, status >= MiniRtcConnectionDisconnected ? LOG_WARN : LOG_INFO, 0, "CrossDeskConn",
+                   "RTC connection status: conn=%{public}llu status=%{public}d trust_challenged=%{public}d trust_rejected=%{public}d host_admitted=%{public}d",
+                   static_cast<unsigned long long>(s->connection_.load()), int(status),
+                   int(s->trust_challenged_.load()), int(trust_rejected), int(s->host_admitted_.load()));
+      s->Event({{"type", "connection"}, {"status", status},
+                {"trustRejected", trust_rejected},
+                {"trustSuspected", trust_suspected}}, true);
       if (status == MiniRtcConnectionConnected && !s->connected_) {
         s->connecting_ = false; s->connected_ = true;
         auto info = MakeHostInformation("CrossDesk HarmonyOS Mobile", {}, true, s->version_, HostPlatform::HarmonyOS);
@@ -154,6 +176,9 @@ class MobileSession {
         info.preferred_display_resolutions = s->preferred_display_resolutions_;
         const auto message = mobile_controller::DeviceTrustIdentity::Advertise(info.to_json());
         MiniRtcSendReliableDataFrame(s->controller_, message.data(), message.size(), kControlStream);
+        OH_LOG_Print(LOG_APP, LOG_INFO, 0, "CrossDeskConn",
+                     "Control handshake sent: conn=%{public}llu device_trust_version=1",
+                     static_cast<unsigned long long>(s->connection_.load()));
         FreeRemoteAction(info);
         RemoteAction audio{}; audio.type = audio_capture; audio.a = !s->muted_; s->Send(audio);
         s->audio_.Start();
@@ -191,16 +216,41 @@ class MobileSession {
       else if (name == kClipboardStream && bytes.size() <= kMaxClipboardBytes)
         s->Event({{"type", "clipboard"}, {"text", bytes}}, true);
       else if (name == kControlStream) {
+        if (const auto parsed = json::parse(bytes, nullptr, false); parsed.is_object() &&
+            parsed.contains("type") && parsed["type"].is_string() &&
+            parsed["type"].get_ref<const std::string&>() == "device_trust_rejected") {
+          s->trust_rejected_ = true;
+          const auto reason = parsed.value("reason", "untrusted");
+          OH_LOG_Print(LOG_APP, LOG_WARN, 0, "CrossDeskConn",
+                       "Device trust rejected by host: conn=%{public}llu reason=%{public}s",
+                       static_cast<unsigned long long>(s->connection_.load()), reason.c_str());
+          return;
+        }
         if (s->trust_) {
           if (auto proof = s->trust_->ChallengeResponse(bytes, s->login_.substr(0, s->login_.find('@')),
                   "CrossDesk HarmonyOS Mobile")) {
-            if (!proof->empty()) MiniRtcSendReliableDataFrame(s->controller_, proof->data(), proof->size(), kControlStream);
+            OH_LOG_Print(LOG_APP, LOG_INFO, 0, "CrossDeskConn",
+                         "Trust challenge received: conn=%{public}llu valid_proof=%{public}d",
+                         static_cast<unsigned long long>(s->connection_.load()), int(!proof->empty()));
+            if (!proof->empty()) {
+              s->trust_challenged_ = true;
+              MiniRtcSendReliableDataFrame(s->controller_, proof->data(), proof->size(), kControlStream);
+              OH_LOG_Print(LOG_APP, LOG_INFO, 0, "CrossDeskConn",
+                           "Trust proof sent: conn=%{public}llu",
+                           static_cast<unsigned long long>(s->connection_.load()));
+            }
             return;
           }
         }
         RemoteAction action{};
         if (action.from_json(bytes)) {
           const auto value = json::parse(action.to_json()); FreeRemoteAction(action);
+          if ((value.contains("host_info") || value.value("type", -1) == 5) && !s->host_admitted_) {
+            s->host_admitted_ = true;
+            OH_LOG_Print(LOG_APP, LOG_INFO, 0, "CrossDeskConn",
+                         "Host admitted: conn=%{public}llu msg_type=%{public}d",
+                         static_cast<unsigned long long>(s->connection_.load()), value.value("type", -1));
+          }
           s->Event({{"type", "data"}, {"message", value}}, true);
         }
       }
@@ -209,7 +259,10 @@ class MobileSession {
   static void Video(const MiniRtcVideoFrame* frame, const char*, size_t, const char* stream, size_t size, void* user) {
     auto* c = static_cast<Context*>(user); auto* s = c->owner;
     if (c->controller && c->generation == s->connection_ && s->connected_ && !s->suspended_ && frame && stream &&
-        std::string(stream,size) == MakeDisplayStreamId(s->display_)) s->renderer_.Video(*frame, s->video_generation_);
+        std::string(stream,size) == MakeDisplayStreamId(s->display_)) {
+      s->host_admitted_ = true;
+      s->renderer_.Video(*frame, s->video_generation_);
+    }
   }
   static void Audio(const char* data, size_t size, const char*, size_t, const char*, size_t, void* user) {
     auto* c = static_cast<Context*>(user); auto* s = c->owner;
@@ -251,9 +304,15 @@ class MobileSession {
   }
   void Disconnect(const std::string& reason) {
     const bool active = controller_ != nullptr;
-    Release(); connected_=false; connecting_=false; ++video_generation_;
+    Release(); connected_=false; connecting_=false;
+    trust_challenged_=false; trust_rejected_=false; host_admitted_=false;
+    first_pointer_logged_=false; first_key_logged_=false;
+    ++video_generation_;
     CancelPreview();
     if (controller_) {
+      OH_LOG_Print(LOG_APP, LOG_INFO, 0, "CrossDeskConn",
+                   "Disconnect peer: conn=%{public}llu has_reason=%{public}d",
+                   static_cast<unsigned long long>(connection_.load()), int(!reason.empty()));
       if (remote_.find(':') != std::string::npos) direct_.Stop();
       else MiniRtcLeaveConnection(controller_,remote_.c_str());
       MiniRtcDestroyPeer(&controller_);
@@ -285,6 +344,9 @@ class MobileSession {
         throw std::runtime_error("Unable to configure MiniRTC logging");
       identity_context_=std::make_unique<Context>(Context{this,false,session_});
       auto p=Parameters(false); identity_=MiniRtcCreatePeer(&p); signal_started_=Clock::now();
+      OH_LOG_Print(LOG_APP, LOG_INFO, 0, "CrossDeskConn",
+                   "Session start: session=%{public}llu port=%{public}d saved_id=%{public}d",
+                   static_cast<unsigned long long>(session_.load()), port_, int(!login_.empty()));
       if (!identity_||MiniRtcInit(identity_)!=0) { throw std::runtime_error("Identity initialization failed"); }
     } else if (op=="stop") Stop();
     else if (op=="version") {
@@ -300,6 +362,11 @@ class MobileSession {
       const bool direct = target.find(':') != std::string::npos;
       if (!trust_ || (!direct && (!online_ || login_.empty()))) throw std::runtime_error("Not signed in");
       Disconnect(""); connection_=v.at("connection").get<uint64_t>();
+      trust_challenged_=false; trust_rejected_=false; host_admitted_=false;
+      first_pointer_logged_=false; first_key_logged_=false;
+      OH_LOG_Print(LOG_APP, LOG_INFO, 0, "CrossDeskConn",
+                   "Connect begin: conn=%{public}llu mode=%{public}s",
+                   static_cast<unsigned long long>(connection_.load()), direct ? "lan_direct" : "signal_id");
       ReadDisplayResolutionPreferences(v.value("displayResolutions", json::array()), preferred_display_resolutions_);
       remote_=target; const auto password=v.at("password").get<std::string>();
       if ((!direct && (remote_.size()!=9 || !std::all_of(remote_.begin(),remote_.end(),::isdigit))) ||
@@ -346,11 +413,19 @@ class MobileSession {
         if (flag<0||flag>8||!std::isfinite(x)||!std::isfinite(y)) return;
         x_=std::clamp(x,0.f,1.f); y_=std::clamp(y,0.f,1.f);
         if (flag>=1&&flag<=6) { unsigned bit=1u<<((flag-1)/2); if (flag&1) buttons_|=bit; else buttons_&=~bit; }
+        if (!first_pointer_logged_.exchange(true))
+          OH_LOG_Print(LOG_APP, LOG_INFO, 0, "CrossDeskConn",
+                       "First pointer input forwarded: conn=%{public}llu flag=%{public}d",
+                       static_cast<unsigned long long>(connection_.load()), flag);
         RemoteAction a{}; a.type=mouse; a.m={x_,y_,std::clamp(v.value("scroll",0),-120,120),static_cast<MouseFlag>(flag)}; Send(a,kMouseStream);
       } else if (op=="key"||op=="virtualKey") {
         const int key=op=="key"?ToVirtualKey(v.at("code").get<int>()):v.at("code").get<int>();
         if (key<=0||key>255) return;
         const bool down=v.at("down").get<bool>(); if (down) keys_.insert(key); else keys_.erase(key);
+        if (op=="key" && !first_key_logged_.exchange(true))
+          OH_LOG_Print(LOG_APP, LOG_INFO, 0, "CrossDeskConn",
+                       "First physical key input forwarded: conn=%{public}llu",
+                       static_cast<unsigned long long>(connection_.load()));
         RemoteAction a{}; a.type=keyboard; a.k={size_t(key),0,false,down?key_down:key_up}; Send(a,kKeyboardStream);
       } else if (op=="chord") {
         if (v.at("connection").get<uint64_t>() != connection_) return;
@@ -450,6 +525,8 @@ class MobileSession {
   json events_=json::array();
   bool stopping_=false,online_=false,connecting_=false;
   std::atomic<bool> connected_{false},muted_{false},suspended_{false};
+  std::atomic<bool> trust_challenged_{false},trust_rejected_{false},host_admitted_{false};
+  std::atomic<bool> first_pointer_logged_{false},first_key_logged_{false};
   std::atomic<uint64_t> session_{0},connection_{0},video_generation_{1},frame_id_{0};
   std::atomic<int64_t> clock_offset_{0};
   std::atomic<int> display_{0};

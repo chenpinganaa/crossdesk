@@ -16,10 +16,11 @@ using SDL_DisplayID = uint32_t;
 struct SDL_Point { int x, y; };
 struct SDL_Rect { int x, y, w, h; };
 struct SDL_DisplayMode { int w, h; };
-struct SDL_Event { uint32_t type; };
+struct SDL_Event { uint32_t type; struct { bool owner; } clipboard; };
 struct SDL_AudioSpec { int format, channels, freq; };
 struct SDL_AudioStream;
-constexpr uint32_t SDL_INIT_VIDEO = 1, SDL_INIT_AUDIO = 2;
+constexpr uint32_t SDL_INIT_VIDEO = 1, SDL_INIT_AUDIO = 2, SDL_INIT_EVENTS = 0x4000;
+constexpr const char* SDL_HINT_VIDEO_ALLOW_SCREENSAVER = "SDL_VIDEO_ALLOW_SCREENSAVER";
 constexpr uint32_t SDL_EVENT_FIRST = 0, SDL_EVENT_LAST = UINT32_MAX;
 constexpr uint32_t SDL_EVENT_QUIT = 0x100, SDL_EVENT_CLIPBOARD_UPDATE = 0x900;
 constexpr int SDL_GETEVENT = 2, SDL_AUDIO_S16 = 0x8010;
@@ -44,8 +45,14 @@ SDL_DisplayID SDL_GetPrimaryDisplay();
 SDL_DisplayID SDL_GetDisplayForPoint(const SDL_Point*);
 SDL_DisplayID* SDL_GetDisplays(int*);
 bool SDL_GetDisplayUsableBounds(SDL_DisplayID, SDL_Rect*);
+float SDL_GetDisplayContentScale(SDL_DisplayID);
+bool SDL_SetHint(const char*, const char*);
 uint32_t SDL_GetGlobalMouseState(float*, float*);
 bool SDL_OpenURL(const char*);
+// Display idle-sleep control. HarmonyOS exposes no per-app screensaver switch,
+// so sharing the desktop must not fail the way an unsupported SDL build would.
+bool SDL_DisableScreenSaver();
+void SDL_EnableScreenSaver();
 uint32_t SDL_OpenAudioDevice(uint32_t, const SDL_AudioSpec*);
 bool SDL_ResumeAudioDevice(uint32_t);
 void SDL_CloseAudioDevice(uint32_t);

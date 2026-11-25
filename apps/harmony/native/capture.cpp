@@ -34,7 +34,7 @@ bool Capture::Start(int width, int height, uint64_t display, Frame frame, State 
         OH_LOG_Print(LOG_APP, LOG_WARN, 0, "SlintDesktop", "Capture frame rate unavailable: %{public}d", int(rate));
     }
     if (code == OH_SCREEN_CAPTURE_STATE_STARTED || code == OH_SCREEN_CAPTURE_STATE_EXIT_PRIVATE_SCENE ||
-        code == OH_SCREEN_CAPTURE_STATE_RESUMED_BY_USER || code == OH_SCREEN_CAPTURE_STATE_RESUMED_BY_APP) {
+        code == kStateResumedByUser || code == kStateResumedByApp) {
       // Native viewers draw the separately transmitted cursor. Only advertise
       // that mode once the recorder confirms it has removed the video cursor.
       const auto result = OH_AVScreenCapture_ShowCursor(capture, self->show_cursor_);
