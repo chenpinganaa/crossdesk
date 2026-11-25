@@ -191,6 +191,7 @@ class WindowsPrivacyBackend final : public PrivacyBackend {
     last_health_ = {};
     last_obstruction_ = nullptr;
     last_obstruction_log_ = 0;
+    obstruction_since_ = 0;
     layout_changed_ = false;
     topology_pending_ = false;
     topology_pending_since_ = 0;
@@ -260,6 +261,11 @@ class WindowsPrivacyBackend final : public PrivacyBackend {
   // cannot be verified. Preserve intent for a bounded time only: a broker that
   // never settles must not keep privacy "on" without any verification.
   static constexpr uint64_t kTopologyPendingLimitMs = 3000;
+  // A higher-band window really does paint above the cover, but one that is
+  // present for a single compositor frame must not release privacy for the
+  // rest of the session. Require the obstruction to persist this long; a clean
+  // pass in between restarts the interval.
+  static constexpr uint64_t kObstructionConfirmMs = 300;
 
   PrivacyHealth TopologyPending() {
     const uint64_t now = GetTickCount64();
@@ -348,9 +354,13 @@ class WindowsPrivacyBackend final : public PrivacyBackend {
         if (!get_band(above, &above_band))
           return {"Could not inspect a window above the high-band cover",
                   false};
-        // HWND list order alone does not express compositor band order.
-        // Only skip the two known ordinary desktop bands, never unknown bands.
-        if (above_band == 0 || above_band == 1) continue;
+        // HWND list order alone does not express compositor band order, but the
+        // band number does: a window in a lower band can never paint above the
+        // cover, so only the cover's own band and anything above it matters.
+        // Ignoring every band below kPrivacyWindowBand keeps ordinary overlays
+        // (IMEs, OSD, update bubbles) that the HWND walk happens to enumerate
+        // from being reported as privacy cover obstructions.
+        if (!IsBandAbovePrivacyCover(above_band, kPrivacyWindowBand)) continue;
         if (std::any_of(windows_.begin(), windows_.end(),
                         [above](const auto& own) {
                           return above == own.cover;
@@ -370,17 +380,27 @@ class WindowsPrivacyBackend final : public PrivacyBackend {
           GetClassNameA(above, window_class, sizeof(window_class));
           GetWindowThreadProcessId(above, &process_id);
           const auto now = GetTickCount64();
-          if (above != last_obstruction_ ||
-              now - last_obstruction_log_ >= 1000) {
+          // Start the confirmation clock once and keep it across passes and
+          // across different windows: alternating overlays must not be able to
+          // restart the interval forever. Cleared only by a clean pass below.
+          if (obstruction_since_ == 0) obstruction_since_ = now;
+          const bool first_sighting = above != last_obstruction_;
+          if (first_sighting) last_obstruction_ = above;
+          if (first_sighting || now - last_obstruction_log_ >= 1000) {
             LOG_WARN(
                 "Potential privacy cover overlap: class={}, process={}, "
                 "band={}, bounds=({}, {})-({}, {}), exstyle=0x{:x}",
                 window_class, process_id, above_band, bounds.left, bounds.top,
                 bounds.right, bounds.bottom,
                 GetWindowLongPtrW(above, GWL_EXSTYLE));
-            last_obstruction_ = above;
             last_obstruction_log_ = now;
           }
+          // A band above the cover is authoritative, so no amount of waiting
+          // makes the cover provably intact. Still hold the decision for a
+          // short interval: a single compositor frame of a transient overlay
+          // must not tear down privacy until the session reconnects.
+          if (now - obstruction_since_ < kObstructionConfirmMs)
+            return {{}, false, false};
           // HWND order cannot prove compositor order, but this window may
           // display content. Report failure so optional privacy is released.
           return {
@@ -389,6 +409,9 @@ class WindowsPrivacyBackend final : public PrivacyBackend {
         }
       }
     }
+    // A clean pass ends the interval, so a later obstruction must re-earn it.
+    last_obstruction_ = nullptr;
+    obstruction_since_ = 0;
     return {health_error_, false};
   }
 
@@ -538,6 +561,7 @@ class WindowsPrivacyBackend final : public PrivacyBackend {
   PrivacyHealth last_health_;
   HWND last_obstruction_ = nullptr;
   uint64_t last_obstruction_log_ = 0;
+  uint64_t obstruction_since_ = 0;
   std::string health_error_;
 };
 

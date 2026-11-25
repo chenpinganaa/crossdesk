@@ -255,6 +255,7 @@
     <string name="text_678b783fb578172b" formatted="false">"Remote-Verbindung"</string>
     <string name="text_deccbd3eb9ba45f2" formatted="false">"Falsches Remote-Passwort"</string>
     <string name="text_a2ce499295e358ae" formatted="false">"Die Gegenstelle hat die Verbindung geschlossen"</string>
+    <string name="text_a9a010200b2de820" formatted="false">"Verbindung vom Remote-Host abgelehnt: Fügen Sie „Einstellungen → Kopplungsinformationen dieses Geräts“ auf dem Computer zu den vertrauenswürdigen Geräten hinzu"</string>
     <string name="text_176e117df3ace734" formatted="false">"Die Gegenstelle ist derzeit nicht verfügbar"</string>
     <string name="text_d2c0694243f93249" formatted="false">"Das Passwort für den Fernzugriff ist abgelaufen. Bitte verbinden Sie sich erneut."</string>
     <string name="text_a5574109f0208e89" formatted="false">"Verbinden"</string>

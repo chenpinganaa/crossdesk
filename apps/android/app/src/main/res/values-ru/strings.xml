@@ -255,6 +255,7 @@
     <string name="text_678b783fb578172b" formatted="false">"Удаленное подключение"</string>
     <string name="text_deccbd3eb9ba45f2" formatted="false">"Неверный удаленный пароль."</string>
     <string name="text_a2ce499295e358ae" formatted="false">"Удаленная сторона закрыла соединение."</string>
+    <string name="text_a9a010200b2de820" formatted="false">"Подключение отклонено удалённым хостом: добавьте «Настройки → Данные сопряжения этого устройства» в доверенные устройства на компьютере."</string>
     <string name="text_176e117df3ace734" formatted="false">"Удаленный конец в настоящее время недоступен."</string>
     <string name="text_d2c0694243f93249" formatted="false">"Срок действия пароля удаленного доступа истек, подключитесь повторно."</string>
     <string name="text_a5574109f0208e89" formatted="false">"Подключиться"</string>

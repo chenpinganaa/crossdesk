@@ -243,6 +243,14 @@ function setup_targets()
         add_includedirs("apps/desktop/src/platform/windows/service")
         add_files("apps/desktop/tests/windows_sas_guard_test.cpp")
 
+    if is_os("windows") then
+        target("privacy_band_policy_test")
+            set_kind("binary")
+            set_default(false)
+            add_includedirs("apps/desktop/src/platform/windows/privacy")
+            add_files("apps/desktop/tests/privacy_band_policy_test.cpp")
+    end
+
     target("crossdesk_ui")
         set_kind("static")
         set_languages("c++20")

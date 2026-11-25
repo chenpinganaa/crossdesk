@@ -255,6 +255,7 @@
     <string name="text_678b783fb578172b" formatted="false">"Connexion à distance"</string>
     <string name="text_deccbd3eb9ba45f2" formatted="false">"Mot de passe distant incorrect"</string>
     <string name="text_a2ce499295e358ae" formatted="false">"L\'extrémité distante a fermé la connexion"</string>
+    <string name="text_a9a010200b2de820" formatted="false">"Connexion refusée par l\'hôte distant : ajoutez « Paramètres → Informations d\'appairage de cet appareil » aux appareils de confiance sur l\'ordinateur"</string>
     <string name="text_176e117df3ace734" formatted="false">"L\'extrémité distante est actuellement indisponible"</string>
     <string name="text_d2c0694243f93249" formatted="false">"Le mot de passe d\'accès à distance a expiré, veuillez vous reconnecter."</string>
     <string name="text_a5574109f0208e89" formatted="false">"Connecter"</string>

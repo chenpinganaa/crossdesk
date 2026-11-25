@@ -13,6 +13,14 @@
 
 namespace crossdesk {
 
+// The privacy cover lives in its own compositor band and a window in a lower
+// band can never paint above it, no matter where it sits in the HWND z-order
+// list. Only the cover's band and anything above it can actually obstruct.
+// Kept as a pure predicate so the band policy is testable without a desktop.
+inline bool IsBandAbovePrivacyCover(unsigned long band, unsigned long cover_band) {
+  return band >= cover_band;
+}
+
 // Called for a visible foreign window whose full bounds intersect a cover.
 // Inspect it on every check: an OSD helper can grow into a content window.
 inline bool IsNonObstructingPrivacyWindow(HWND window, const RECT& bounds) {

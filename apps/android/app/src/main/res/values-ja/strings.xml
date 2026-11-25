@@ -255,6 +255,7 @@
     <string name="text_678b783fb578172b" formatted="false">"リモート接続"</string>
     <string name="text_deccbd3eb9ba45f2" formatted="false">"リモートパスワードが正しくありません"</string>
     <string name="text_a2ce499295e358ae" formatted="false">"リモートエンドが接続を閉じました"</string>
+    <string name="text_a9a010200b2de820" formatted="false">"接続がリモートホストにより拒否されました。「設定 → このデバイスのペアリング情報」をPCの信頼済みデバイス一覧に追加してください"</string>
     <string name="text_176e117df3ace734" formatted="false">"リモートエンドは現在利用できません"</string>
     <string name="text_d2c0694243f93249" formatted="false">"リモートアクセスパスワードの有効期限が切れています。再接続してください。"</string>
     <string name="text_a5574109f0208e89" formatted="false">"接続"</string>

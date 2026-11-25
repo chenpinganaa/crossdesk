@@ -255,6 +255,7 @@
     <string name="text_678b783fb578172b" formatted="false">"Conexão remota"</string>
     <string name="text_deccbd3eb9ba45f2" formatted="false">"Senha remota incorreta"</string>
     <string name="text_a2ce499295e358ae" formatted="false">"A extremidade remota fechou a conexão"</string>
+    <string name="text_a9a010200b2de820" formatted="false">"Conexão recusada pelo host remoto: adicione \"Configurações → Informações de pareamento deste dispositivo\" aos dispositivos confiáveis do computador"</string>
     <string name="text_176e117df3ace734" formatted="false">"A extremidade remota está indisponível no momento"</string>
     <string name="text_d2c0694243f93249" formatted="false">"A senha de acesso remoto expirou, reconecte."</string>
     <string name="text_a5574109f0208e89" formatted="false">"Conectar"</string>

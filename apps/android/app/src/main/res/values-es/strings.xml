@@ -255,6 +255,7 @@
     <string name="text_678b783fb578172b" formatted="false">"Conexión remota"</string>
     <string name="text_deccbd3eb9ba45f2" formatted="false">"Contraseña remota incorrecta"</string>
     <string name="text_a2ce499295e358ae" formatted="false">"El extremo remoto ha cerrado la conexión"</string>
+    <string name="text_a9a010200b2de820" formatted="false">"Conexión rechazada por el equipo remoto: añada «Ajustes → Información de emparejamiento de este dispositivo» a los dispositivos de confianza del equipo"</string>
     <string name="text_176e117df3ace734" formatted="false">"El extremo remoto no está disponible actualmente"</string>
     <string name="text_d2c0694243f93249" formatted="false">"La contraseña de acceso remoto ha caducado, vuelva a conectarse."</string>
     <string name="text_a5574109f0208e89" formatted="false">"Conectar"</string>

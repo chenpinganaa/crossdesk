@@ -261,6 +261,7 @@ final class LocalizationKeys {
         IDS.put("远程连接", R.string.text_678b783fb578172b);
         IDS.put("远端密码错误", R.string.text_deccbd3eb9ba45f2);
         IDS.put("远端已关闭连接", R.string.text_a2ce499295e358ae);
+        IDS.put("远端拒绝连接：请将“设置 → 本机配对信息”添加到电脑端可信设备列表", R.string.text_a9a010200b2de820);
         IDS.put("远端当前不可用", R.string.text_176e117df3ace734);
         IDS.put("远端访问密码已失效，请重新连接", R.string.text_d2c0694243f93249);
         IDS.put("连接", R.string.text_a5574109f0208e89);

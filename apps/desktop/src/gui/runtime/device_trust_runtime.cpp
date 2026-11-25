@@ -177,6 +177,8 @@ void GuiRuntime::TickControllerTrust() {
     if (action.kind < 0) {
       LOG_WARN("Reject controller: trusted device verification required; reason={}",
                action.rejection_reason);
+      SendTrustMessage(action.id, {{"type", "device_trust_rejected"},
+          {"version", 1}, {"reason", action.rejection_reason ? action.rejection_reason : "untrusted"}});
       transfers_.Cancel(events.get(), action.id);
       remote_input_.Disconnect(action.id);
       CloseServerController(action.id);

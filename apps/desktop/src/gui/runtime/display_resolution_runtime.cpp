@@ -149,7 +149,10 @@ void GuiRuntime::HandleDisplayResolutionChanges() {
       initial.emplace_back(id, startup);
     }
   }
-  for (const auto &[id, startup] : initial) {
+  for (const auto &entry : initial) {
+    // clang <16 cannot implicitly capture a structured binding in a lambda.
+    const std::string &id = entry.first;
+    const InitialDisplayResolutions &startup = entry.second;
     const auto source = startup.source.lock();
     const auto active = [&] {
       if (stopping_ || !source || !source->IsActive() ||

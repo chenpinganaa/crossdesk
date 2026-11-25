@@ -255,6 +255,7 @@
     <string name="text_678b783fb578172b" formatted="false">"远程连接"</string>
     <string name="text_deccbd3eb9ba45f2" formatted="false">"远端密码错误"</string>
     <string name="text_a2ce499295e358ae" formatted="false">"远端已关闭连接"</string>
+    <string name="text_a9a010200b2de820" formatted="false">"远端拒绝连接：请将“设置 → 本机配对信息”添加到电脑端可信设备列表"</string>
     <string name="text_176e117df3ace734" formatted="false">"远端当前不可用"</string>
     <string name="text_d2c0694243f93249" formatted="false">"远端访问密码已失效，请重新连接"</string>
     <string name="text_a5574109f0208e89" formatted="false">"连接"</string>

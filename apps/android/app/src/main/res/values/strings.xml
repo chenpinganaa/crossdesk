@@ -255,6 +255,7 @@
     <string name="text_678b783fb578172b" formatted="false">"Remote connection"</string>
     <string name="text_deccbd3eb9ba45f2" formatted="false">"Incorrect remote password"</string>
     <string name="text_a2ce499295e358ae" formatted="false">"The remote end has closed the connection"</string>
+    <string name="text_a9a010200b2de820" formatted="false">"Connection rejected by remote host: add \"Settings → This Device Pairing Info\" to the computer\'s trusted devices"</string>
     <string name="text_176e117df3ace734" formatted="false">"The remote end is currently unavailable"</string>
     <string name="text_d2c0694243f93249" formatted="false">"The remote access password has expired, please reconnect."</string>
     <string name="text_a5574109f0208e89" formatted="false">"Connect"</string>

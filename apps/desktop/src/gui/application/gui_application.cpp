@@ -4833,7 +4833,10 @@ void GuiApplication::SyncFileTransferNotifications() {
   const float screen_height = bounds.h / desktop_scale - (clipboard_visible ? 122.0f : 0.0f);
   const auto layout = Fit(screen_width, screen_height);
   size_t slot = 0;
-  for (auto& [id, notification] : ui_->transfer_notifications) {
+  for (auto& transfer_slot : ui_->transfer_notifications) {
+    // clang <16 cannot capture a structured binding inside a lambda.
+    const auto& id = transfer_slot.first;
+    auto& notification = transfer_slot.second;
     auto& info = notification.info;
     if (!files.count(id) && !pending_files.count(id) && info.status != Status::Completed &&
         info.status != Status::Failed && info.status != Status::Cancelled) {

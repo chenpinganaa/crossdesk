@@ -8964,6 +8964,18 @@
       "pt-BR": "A extremidade remota fechou a conexão",
       "ru": "Удаленная сторона закрыла соединение."
     },
+    "远端拒绝连接：请将“设置 → 本机配对信息”添加到电脑端可信设备列表": {
+      "zh-Hans": "远端拒绝连接：请将“设置 → 本机配对信息”添加到电脑端可信设备列表",
+      "en": "Connection rejected by remote host: add \"Settings → This Device Pairing Info\" to the computer's trusted devices",
+      "zh-Hant": "遠端拒絕連線：請將「設定 → 本機配對資訊」新增至電腦端信任裝置清單",
+      "ja": "接続がリモートホストにより拒否されました。「設定 → このデバイスのペアリング情報」をPCの信頼済みデバイス一覧に追加してください",
+      "ko": "원격 호스트가 연결을 거부했습니다. \"설정 → 이 기기 페어링 정보\"를 컴퓨터의 신뢰할 수 있는 기기 목록에 추가하세요.",
+      "de": "Verbindung vom Remote-Host abgelehnt: Fügen Sie „Einstellungen → Kopplungsinformationen dieses Geräts“ auf dem Computer zu den vertrauenswürdigen Geräten hinzu",
+      "fr": "Connexion refusée par l'hôte distant : ajoutez « Paramètres → Informations d'appairage de cet appareil » aux appareils de confiance sur l'ordinateur",
+      "es": "Conexión rechazada por el equipo remoto: añada «Ajustes → Información de emparejamiento de este dispositivo» a los dispositivos de confianza del equipo",
+      "pt-BR": "Conexão recusada pelo host remoto: adicione \"Configurações → Informações de pareamento deste dispositivo\" aos dispositivos confiáveis do computador",
+      "ru": "Подключение отклонено удалённым хостом: добавьте «Настройки → Данные сопряжения этого устройства» в доверенные устройства на компьютере."
+    },
     "远端已进入安全桌面": {
       "zh-Hans": "远端已进入安全桌面",
       "en": "Remote secure desktop active",
@@ -13196,6 +13208,7 @@
       "远程连接",
       "远端密码错误",
       "远端已关闭连接",
+      "远端拒绝连接：请将“设置 → 本机配对信息”添加到电脑端可信设备列表",
       "远端当前不可用",
       "远端访问密码已失效，请重新连接",
       "连接",
@@ -13906,6 +13919,7 @@
       "远程桌面：轻触点击、长按右键、双指捏合缩放、放大后双指拖动画面，原始比例下双指滚动",
       "远程电脑",
       "远端已关闭连接",
+      "远端拒绝连接：请将“设置 → 本机配对信息”添加到电脑端可信设备列表",
       "远端当前不可用",
       "连接",
       "连接失败",
