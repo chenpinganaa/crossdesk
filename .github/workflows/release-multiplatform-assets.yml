@@ -1,0 +1,231 @@
+name: Build and Attach Multi-Platform Assets to Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Target GitHub Release tag to attach assets to"
+        required: true
+        type: string
+        default: "v1.7.7-20261125-fix1"
+      patch:
+        description: "Hotfix patch number (0 for normal)"
+        required: false
+        type: string
+        default: "0"
+
+permissions:
+  actions: read
+  contents: write
+
+env:
+  XMAKE_MIN_VERSION: "3.1.1"
+
+jobs:
+  prepare-version:
+    name: Resolve version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Resolve version
+        id: version
+        shell: bash
+        env:
+          PATCH_NUMBER: ${{ inputs.patch || '0' }}
+        run: |
+          VERSION_BASE="$(python3 scripts/version.py show desktop --field version)"
+          VERSION_BASE="${VERSION_BASE#v}"
+          BUILD_DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
+          if [[ "${PATCH_NUMBER}" != "0" && "${PATCH_NUMBER}" =~ ^[0-9]+$ ]]; then
+            VERSION_NUM="v${VERSION_BASE}-${PATCH_NUMBER}-${BUILD_DATE}"
+          else
+            VERSION_NUM="v${VERSION_BASE}-${BUILD_DATE}"
+          fi
+          echo "version=${VERSION_NUM}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${VERSION_NUM}"
+
+  build-linux:
+    name: Build Linux (${{ matrix.arch }})
+    needs: prepare-version
+    runs-on: ${{ matrix.runner }}
+    env:
+      LEGAL_VERSION: ${{ needs.prepare-version.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.9-rust1.92.0
+            package_script: ./apps/desktop/scripts/linux/pkg_amd64.sh
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            image: crossdesk/ubuntu20.04:buildenv-cuda12.6.3-gcc10-cmake3.31.6-pipewire0.3.48-xmake3.0.9-rust1.92.0
+            package_script: ./apps/desktop/scripts/linux/pkg_arm64.sh
+    container:
+      image: ${{ matrix.image }}
+      options: --user root
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Ensure minimum Xmake version
+        uses: ./.github/actions/ensure-xmake
+        with:
+          minimum-version: ${{ env.XMAKE_MIN_VERSION }}
+          cache-key: ${{ matrix.image }}
+
+      - name: Verify Linux build image
+        shell: bash
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: bash docker/linux-build/verify-build-image.sh
+
+      - name: Ensure Wayland and clipboard build dependencies
+        shell: bash
+        run: |
+          if pkg-config --exists dbus-1 libdrm fuse fuse3 && \
+             test -f /opt/crossdesk-pipewire-sdk/include/pipewire-0.3/pipewire/pipewire.h && \
+             test -f /opt/crossdesk-pipewire-sdk/include/spa-0.2/spa/param/video/format-utils.h; then
+            exit 0
+          fi
+          apt-get update
+          apt-get install -y --no-install-recommends libdbus-1-dev libdrm-dev libfuse-dev libfuse3-dev
+          rm -rf /var/lib/apt/lists/*
+          install-crossdesk-pipewire-sdk
+
+      - name: Build CrossDesk
+        env:
+          CUDA_PATH: /usr/local/cuda
+          XMAKE_GLOBALDIR: /data
+        run: |
+          xmake f -v --CROSSDESK_VERSION=${LEGAL_VERSION} --USE_CUDA=true --USE_WAYLAND=true \
+            --cc=gcc-10 --cxx=g++-10 --root -y
+          xmake b -vy --root crossdesk
+
+      - name: Package
+        run: |
+          chmod +x ${{ matrix.package_script }}
+          ${{ matrix.package_script }} ${LEGAL_VERSION}
+
+      - name: Stage Linux release artifacts
+        shell: bash
+        run: |
+          mkdir -p linux-artifacts
+          for PACKAGE in crossdesk crossdesk-virtual-desktop-xfce; do
+            FILE="${PACKAGE}-linux-${{ matrix.arch }}-${LEGAL_VERSION}.deb"
+            test -s "${FILE}"
+            cp "${FILE}" linux-artifacts/
+          done
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: crossdesk-linux-${{ matrix.arch }}-${{ env.LEGAL_VERSION }}
+          path: linux-artifacts/
+          if-no-files-found: error
+
+  build-macos:
+    name: Build macOS (${{ matrix.arch }})
+    needs: prepare-version
+    runs-on: ${{ matrix.runner }}
+    env:
+      VERSION_NUM: ${{ needs.prepare-version.outputs.version }}
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+      EXPECTED_MACOS_SDK: "26.5"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            binary_arch: x86_64
+            runner: macos-26-intel
+            cache-key: intel-macos26-xcode26.6-min14
+            package_script: ./apps/desktop/scripts/macos/pkg_x64.sh
+          - arch: arm64
+            binary_arch: arm64
+            runner: macos-26
+            cache-key: arm-macos26-xcode26.6-min14
+            package_script: ./apps/desktop/scripts/macos/pkg_arm64.sh
+    steps:
+      - name: Select Xcode 26.6
+        shell: bash
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Cache xmake dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.xmake/packages
+          key: "${{ runner.os }}-xmake-deps-${{ matrix.cache-key }}-${{ github.run_id }}"
+          restore-keys: |
+            ${{ runner.os }}-xmake-deps-${{ matrix.cache-key }}-
+
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Initialize submodules
+        run: git submodule update --init --recursive
+
+      - name: Ensure minimum Xmake version
+        uses: ./.github/actions/ensure-xmake
+        with:
+          minimum-version: ${{ env.XMAKE_MIN_VERSION }}
+
+      - name: Update xmake repositories
+        run: xmake repo -u
+
+      - name: Build CrossDesk
+        run: |
+          xmake f --target_minver=${MACOSX_DEPLOYMENT_TARGET} --CROSSDESK_VERSION=${VERSION_NUM} --USE_CUDA=false -vyD
+          xmake b -vy crossdesk
+
+      - name: Package CrossDesk app
+        run: |
+          chmod +x ${{ matrix.package_script }}
+          ${{ matrix.package_script }} ${VERSION_NUM}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: crossdesk-macos-${{ matrix.arch }}-${{ env.VERSION_NUM }}
+          path: crossdesk-macos-${{ matrix.arch }}-${{ env.VERSION_NUM }}.pkg
+          if-no-files-found: error
+
+  build-android:
+    name: Build Android
+    uses: ./.github/workflows/build-android.yml
+    with:
+      patch: ${{ inputs.patch || '0' }}
+    permissions:
+      contents: read
+
+  attach-to-release:
+    name: Attach Built Assets to Release
+    if: always() && (needs.build-linux.result == 'success' || needs.build-macos.result == 'success' || needs.build-android.result == 'success')
+    needs: [prepare-version, build-linux, build-macos, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download built artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Collect and upload assets to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_TAG: ${{ inputs.release_tag }}
+        run: |
+          mkdir -p upload-assets
+          find artifacts -type f \( -name '*.deb' -o -name '*.pkg' -o -name '*.apk' \) -exec cp -v {} upload-assets/ \;
+          ls -lh upload-assets/
+          if [ -z "$(ls -A upload-assets)" ]; then
+            echo "No built packages found to upload!"
+            exit 1
+          fi
+          gh release upload "${TARGET_TAG}" upload-assets/* --repo "${GITHUB_REPOSITORY}" --clobber
